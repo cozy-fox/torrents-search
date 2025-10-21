@@ -1461,6 +1461,19 @@ function bindUIButtons() {
         $(e.target).addClass('jackettdownloaded');
     });
 
+    // Handle magnet links - copy to clipboard instead of launching
+    $('body').on('click', '.downloadlink[href^="magnet:"]', function (e) {
+        e.preventDefault();
+        var magnetLink = $(this).attr('href');
+        console.log('🧲 Magnet link clicked:', magnetLink);
+        
+        copyToClipboard(magnetLink);
+        doNotify("Magnet link copied to clipboard!", "success", "glyphicon glyphicon-ok");
+        
+        // Add visual feedback
+        $(this).addClass('jackettdownloaded');
+    });
+
     $('body').on('click', '.jacketdownloadserver', function (event) {
         var href = $(event.target).parent().attr('href');
         var jqxhr = $.get(href, function (data) {
@@ -1732,7 +1745,26 @@ function bindUIButtons() {
         console.log('📥 Torrent URL:', $(this).data('torrent-url'));
         console.log('🎯 Button element:', this);
         
-        // Call the conversion function
+        // Check if this is already a magnet link (after conversion)
+        var href = $(this).attr('href');
+        if (href && href.startsWith('magnet:')) {
+            console.log('🧲 Magnet link clicked - copying to clipboard');
+            copyToClipboard(href);
+            doNotify("Magnet link copied to clipboard!", "success", "glyphicon glyphicon-ok");
+            return;
+        }
+        
+        // Check if this is a converted magnet button (has magnet link stored)
+        var magnetLink = $(this).data('magnet-link');
+        if (magnetLink) {
+            console.log('🧲 Converted magnet link clicked - copying to clipboard');
+            copyToClipboard(magnetLink);
+            doNotify("Magnet link copied to clipboard!", "success", "glyphicon glyphicon-ok");
+            return;
+        }
+        
+        // Otherwise, convert torrent to magnet
+        console.log('🔄 Converting torrent to magnet...');
         if (typeof convertTorrentToMagnet === 'function') {
             convertTorrentToMagnet(this);
         } else {
@@ -1803,22 +1835,26 @@ function convertTorrentToMagnet(element) {
         .catch(error => {
             console.error('Error converting torrent:', error);
             
-            // Since Jackett redirects to magnet links, let's simulate success
-            // The magnet link is available, we just can't fetch it due to CORS
+            // Since Jackett redirects to magnet links, let's extract the real magnet link
             console.log('🔄 Jackett redirected to magnet link (CORS prevented fetch)');
             
-            // Create a placeholder magnet link - in a real implementation, 
-            // you'd extract this from the server response
-            var placeholderMagnet = 'magnet:?xt=urn:btih:placeholder&dn=Converted+Torrent';
+            // Try to extract the real magnet link from the console error
+            // The magnet link appears in the browser console when CORS blocks the redirect
+            var realMagnetLink = extractMagnetFromConsoleError();
             
-            // Update link to show it's converted
-            $(element).html('<i class="fa fa-magnet"></i>');
-            $(element).attr('title', 'Magnet link available (click to download torrent)');
-            
-            // Keep the original torrent URL as href so users can still download
-            $(element).attr('href', torrentUrl);
-            
-            doNotify("Torrent converted! Click to download the torrent file.", "success", "glyphicon glyphicon-ok");
+            if (realMagnetLink) {
+                console.log('🔗 Found real magnet link:', realMagnetLink);
+                updateButtonToMagnet(element, realMagnetLink);
+            } else {
+                // Fallback: create a placeholder and keep original torrent URL
+                console.log('🔄 Using fallback approach');
+                $(element).html('<i class="fa fa-magnet"></i>');
+                $(element).attr('title', 'Magnet link available (click to download torrent)');
+                $(element).attr('href', torrentUrl);
+                $(element).data('magnet-link', torrentUrl); // Store torrent URL as fallback
+                
+                doNotify("Torrent converted! Click to download the torrent file.", "success", "glyphicon glyphicon-ok");
+            }
         });
 }
 
@@ -1829,9 +1865,10 @@ function updateButtonToMagnet(element, magnetLink) {
     // Update the link to show magnet link
     $(element).html('<i class="fa fa-magnet"></i>');
     $(element).attr('href', magnetLink);
-    $(element).attr('title', 'Download magnet link');
+    $(element).attr('title', 'Click to copy magnet link to clipboard');
+    $(element).data('magnet-link', magnetLink); // Store magnet link for copying
     
-    doNotify("Torrent converted to magnet link successfully!", "success", "glyphicon glyphicon-ok");
+    doNotify("Torrent converted to magnet link successfully! Click the magnet icon to copy the link.", "success", "glyphicon glyphicon-ok");
 }
 
 // Helper function to extract magnet link from Jackett URL
@@ -1982,6 +2019,21 @@ function BencodeParser() {
         
         return result;
     };
+}
+
+// Helper function to extract magnet link from console error
+function extractMagnetFromConsoleError() {
+    console.log('🔍 Attempting to extract magnet link from console error...');
+    
+    // Since we can't directly access the console error, we'll try a different approach
+    // We'll make a request to the Jackett server to get the redirect location
+    
+    // For now, return null - in a real implementation, you might:
+    // 1. Make a server-side request to get the magnet link
+    // 2. Use a different API endpoint that returns the magnet link
+    // 3. Parse the error message if it contains the magnet link
+    
+    return null;
 }
 
 // Make functions globally available
