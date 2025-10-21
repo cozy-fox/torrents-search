@@ -386,3 +386,25 @@ input#searchquery {
 #searchResults .indexers .no-results{
     color: Grey;
 }
+
+/* Preset buttons styling */
+.preset-buttons-container {
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    padding: 8px;
+    background-color: #f9f9f9;
+}
+
+.preset-buttons {
+    margin-top: 5px;
+}
+
+.preset-button {
+    transition: all 0.2s ease;
+}
+
+.preset-button:hover {
+    background-color: #337ab7;
+    color: white;
+    border-color: #2e6da4;
+}

@@ -549,6 +549,10 @@
                         <p>You can search all configured indexers from this screen.</p>
                         <label for="searchquery">Query</label>
                         <input class="form-control" type="text" name="query" id="searchquery" />
+                        <div id="preset-buttons-container" class="preset-buttons-container" style="margin-top: 10px; margin-bottom: 15px;">
+                            <label style="font-size: 12px; color: #666;">Saved Presets:</label>
+                            <div id="preset-buttons" class="preset-buttons"></div>
+                        </div>
                         {{#if filters}}
                         <label for="searchFilter">Filter</label>
                         <select name="filter" id="searchFilter">
@@ -605,7 +609,6 @@
             </span>
         {{/each}}
         </p>
-        <datalist id="jackett-search-saved-presets"></datalist>
         <table id="jackett-search-results-datatable" class="dataTable compact cell-border hover stripe">
             <thead>
                 <tr>
@@ -624,6 +627,7 @@
                     <th class="text-center fit" title="UploadVolumeFactor">ULF</th>
                     <th class="text-center" title="Download">DL</th>
                     <th class="text-center" title="Magnet">M</th>
+                    <th class="text-center" title="Play">▶</th>
                 </tr>
             </thead>
             <tbody>
@@ -663,11 +667,25 @@
                         {{/if}}
                         {{/if}}
                     </td>
+                    <td class="text-center playcolumn">
+                        {{#if MagnetUri}}
+                        <button class="play-btn btn btn-success btn-xs" data-magnet="{{MagnetUri}}" title="Play in VLC">
+                            <i class="fa fa-play"></i>
+                        </button>
+                        {{else}}
+                        {{#if Link}}
+                        <button class="play-btn btn btn-success btn-xs" data-torrent-url="{{Link}}" title="Convert and play in VLC">
+                            <i class="fa fa-play"></i>
+                        </button>
+                        {{/if}}
+                        {{/if}}
+                    </td>
                 </tr>
                 {{/each}}
             </tbody>
             <tfoot>
                 <tr>
+                    <td></td>
                     <td></td>
                     <td></td>
                     <td></td>

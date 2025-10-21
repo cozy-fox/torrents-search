@@ -1044,6 +1044,43 @@ function updateReleasesRow(row) {
     }
 }
 
+function createPresetButtons(modal) {
+    var presets = getSavedPresets();
+    var presetContainer = modal.find('#preset-buttons');
+    var presetButtonsContainer = modal.find('#preset-buttons-container');
+    
+    // Hide container if no presets
+    if (presets.length === 0) {
+        presetButtonsContainer.hide();
+        return;
+    }
+    
+    // Show container and clear existing buttons
+    presetButtonsContainer.show();
+    presetContainer.empty();
+    
+    // Create buttons for each preset
+    presets.forEach(function(preset) {
+        var button = $('<button type="button" class="btn btn-default btn-xs preset-button" style="margin-right: 5px; margin-bottom: 5px;">' + preset + '</button>');
+        button.data('preset', preset);
+        
+        // Add click handler to fill search query and trigger search
+        button.on('click', function() {
+            var presetValue = $(this).data('preset');
+            var searchQuery = modal.find('#searchquery');
+            var searchButton = modal.find('#jackett-search-perform');
+            
+            // Fill the search query field
+            searchQuery.val(presetValue);
+            
+            // Trigger search
+            searchButton.click();
+        });
+        
+        presetContainer.append(button);
+    });
+}
+
 function showSearch(selectedFilter, selectedIndexer, query, category) {
     var selectedIndexers = [];
     if (selectedIndexer)
@@ -1055,6 +1092,9 @@ function showSearch(selectedFilter, selectedIndexer, query, category) {
     }));
 
     $("#modals").html(releaseDialog);
+
+    // Create and display preset buttons
+    createPresetButtons(releaseDialog);
 
     releaseDialog.on('shown.bs.modal', function () {
         releaseDialog.find('#searchquery').focusWithoutScrolling();
@@ -1265,8 +1305,6 @@ function setSavePresetsButtonState(table, element, state = false) {
                 if (presets.includes(preset)) {
                     presets = presets.filter(item => item != preset);
                     setSavedPresets(presets);
-                    var datalist = element.find("datalist[id=jackett-search-saved-presets]")
-                    datalist.empty();
                     table.api().draw();
                 }
             }
@@ -1363,17 +1401,7 @@ function updateSearchResultTable(element, results) {
         ],
         fnPreDrawCallback: function () {
             var table = this;
-            var datalist = element.find("datalist[id=jackett-search-saved-presets]")
-
             var presets = getSavedPresets();
-            if (presets.length > 0) {
-                datalist.empty();
-                presets.forEach(preset => {
-                    var option = $('<option></option>');
-                    option.attr("value", preset);
-                    datalist.append(option);
-                })
-            }
 
             var inputSearch = element.find("input[type=search]");
             setSavePresetsButtonState(table, element, presets.includes(inputSearch.val().trim()));
@@ -1383,7 +1411,6 @@ function updateSearchResultTable(element, results) {
                 newInputSearch.attr("custom", "true");
                 newInputSearch.attr("data-toggle", "tooltip");
                 newInputSearch.attr("title", "Search query consists of several keywords.\nKeyword starting with \"-\" is considered a negative match.\nKeywords separated by \"|\" are considered as OR filters.");
-                newInputSearch.attr("list", "jackett-search-saved-presets");
                 newInputSearch.on("input", function () {
                     var newKeywords = [];
                     var filterText = $(this).val().trim();
@@ -1772,6 +1799,80 @@ function bindUIButtons() {
             doNotify("Conversion function not available", "danger", "glyphicon glyphicon-alert");
         }
     });
+
+    // Handle Play button clicks for VLC playback
+    $('body').on('click', '.play-btn', function (e) {
+        e.preventDefault();
+        console.log('▶️ Play button clicked!');
+        
+        var $btn = $(this);
+        var magnetLink = $btn.data('magnet');
+        var torrentUrl = $btn.data('torrent-url');
+        
+        // Show loading state
+        var originalHtml = $btn.html();
+        $btn.html('<i class="fa fa-spinner fa-spin"></i>');
+        $btn.prop('disabled', true);
+        
+        // Function to play magnet link
+        function playMagnet(magnet) {
+            console.log('🎬 Playing magnet link:', magnet);
+            
+            // Call VLC helper service
+            fetch(`http://127.0.0.1:48888/play?magnet=${encodeURIComponent(magnet)}`)
+                .then(response => {
+                    if (response.ok) {
+                        doNotify("Starting playback in VLC...", "success", "glyphicon glyphicon-play");
+                    } else {
+                        throw new Error('VLC helper service error');
+                    }
+                })
+                .catch(error => {
+                    console.error('VLC helper error:', error);
+                    showVlcHelperInstructions();
+                })
+                .finally(() => {
+                    // Restore button state
+                    $btn.html(originalHtml);
+                    $btn.prop('disabled', false);
+                });
+        }
+        
+        // If we have a magnet link, play it directly
+        if (magnetLink) {
+            playMagnet(magnetLink);
+            return;
+        }
+        
+        // If we have a torrent URL, convert it to magnet first
+        if (torrentUrl) {
+            console.log('🔄 Converting torrent to magnet for playback...');
+            
+            // Use existing conversion logic
+            if (typeof convertTorrentToMagnet === 'function') {
+                // Create a temporary element for conversion
+                var tempElement = $('<a>').attr('data-torrent-url', torrentUrl)[0];
+                
+                // Convert torrent to magnet
+                convertTorrentToMagnet(tempElement);
+                
+                // Wait a bit for conversion, then try to get the magnet link
+                setTimeout(() => {
+                    var convertedMagnet = $(tempElement).data('magnet-link');
+                    if (convertedMagnet && convertedMagnet.startsWith('magnet:')) {
+                        playMagnet(convertedMagnet);
+                    } else {
+                        // Fallback: try to extract magnet from the torrent URL
+                        console.log('🔄 Conversion failed, trying direct approach...');
+                        playMagnet(torrentUrl); // VLC helper might handle torrent URLs
+                    }
+                }, 2000);
+            } else {
+                console.error('convertTorrentToMagnet function not available');
+                playMagnet(torrentUrl); // Try direct approach
+            }
+        }
+    });
 }
 
 function proxyWarning(input) {
@@ -2036,7 +2137,69 @@ function extractMagnetFromConsoleError() {
     return null;
 }
 
+// Show VLC helper setup instructions
+function showVlcHelperInstructions() {
+    var instructionsHtml = `
+        <div class="modal fade" id="vlc-helper-modal" tabindex="-1" role="dialog">
+            <div class="modal-dialog" role="document">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <button type="button" class="close" data-dismiss="modal">&times;</button>
+                        <h4 class="modal-title">VLC Helper Setup Required</h4>
+                    </div>
+                    <div class="modal-body">
+                        <p>To use the Play button, you need to set up the VLC Helper service:</p>
+                        <ol>
+                            <li><strong>Install Node.js</strong> from <a href="https://nodejs.org" target="_blank">nodejs.org</a></li>
+                            <li><strong>Install peerflix</strong>: <code>npm install -g peerflix</code></li>
+                            <li><strong>Download and run</strong> the VLC helper script</li>
+                        </ol>
+                        <div class="alert alert-info">
+                            <strong>Quick Start:</strong><br>
+                            1. Download <code>vlc-helper.js</code> from the Jackett repository<br>
+                            2. Run: <code>node vlc-helper.js</code><br>
+                            3. Keep the terminal window open while using Jackett
+                        </div>
+                        <p><strong>Note:</strong> The helper must run on the same machine where you want to play videos.</p>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-default" data-dismiss="modal">Close</button>
+                        <button type="button" class="btn btn-primary" onclick="testVlcHelper()">Test Connection</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    // Remove existing modal if any
+    $('#vlc-helper-modal').remove();
+    
+    // Add modal to body
+    $('body').append(instructionsHtml);
+    
+    // Show modal
+    $('#vlc-helper-modal').modal('show');
+}
+
+// Test VLC helper connection
+function testVlcHelper() {
+    fetch('http://127.0.0.1:48888/ping')
+        .then(response => {
+            if (response.ok) {
+                doNotify("VLC Helper is running!", "success", "glyphicon glyphicon-ok");
+                $('#vlc-helper-modal').modal('hide');
+            } else {
+                throw new Error('VLC helper not responding');
+            }
+        })
+        .catch(error => {
+            doNotify("VLC Helper is not running. Please start it first.", "danger", "glyphicon glyphicon-alert");
+        });
+}
+
 // Make functions globally available
 window.convertTorrentToMagnet = convertTorrentToMagnet;
 window.parseTorrentToMagnet = parseTorrentToMagnet;
 window.BencodeParser = BencodeParser;
+window.showVlcHelperInstructions = showVlcHelperInstructions;
+window.testVlcHelper = testVlcHelper;
