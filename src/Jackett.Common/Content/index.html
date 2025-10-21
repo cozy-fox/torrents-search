@@ -623,6 +623,7 @@
                     <th class="text-center fit" title="DownloadVolumeFactor">DLF</th>
                     <th class="text-center fit" title="UploadVolumeFactor">ULF</th>
                     <th class="text-center" title="Download">DL</th>
+                    <th class="text-center" title="Magnet">M</th>
                 </tr>
             </thead>
             <tbody>
@@ -647,11 +648,19 @@
                         {{#if Link}}
                         <a class="downloadlink" title="Download locally" href="{{Link}}"><i class="fa fa-download"></i></a>
                         {{/if}}
-                        {{#if MagnetUri}}
-                        <a class="downloadlink" title="Download locally (magnet)" href="{{MagnetUri}}"><i class="fa fa-magnet"></i></a>
-                        {{/if}}
                         {{#if BlackholeLink}}
                         <a class="downloadlink jacketdownloadserver" title="Save to server blackhole directory" href="{{BlackholeLink}}"><i class="fa fa-upload"></i></a>
+                        {{/if}}
+                    </td>
+                    <td class="text-center magnetcolumn">
+                        {{#if MagnetUri}}
+                        <a class="downloadlink" title="Download magnet link" href="{{MagnetUri}}"><i class="fa fa-magnet"></i></a>
+                        {{else}}
+                        {{#if Link}}
+                        <a class="downloadlink convert-torrent-btn" id="convert-torrent-btn" data-torrent-url="{{Link}}" title="Convert torrent to magnet" href="javascript:void(0)">
+                            <i class="fa fa-exchange"></i>
+                        </a>
+                        {{/if}}
                         {{/if}}
                     </td>
                 </tr>
