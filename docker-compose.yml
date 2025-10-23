@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  jackett:
+    build: .
+    container_name: jackett
+    restart: unless-stopped
+    ports:
+      - "9117:9117"
+    volumes:
+      - ./config:/app/config
+      - ./downloads:/app/downloads
+    environment:
+      - ASPNETCORE_URLS=http://+:9117
+      - ASPNETCORE_ENVIRONMENT=Production
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9117/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - jackett-network
+
+networks:
+  jackett-network:
+    driver: bridge
