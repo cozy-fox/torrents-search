@@ -1804,73 +1804,75 @@ function bindUIButtons() {
     $('body').on('click', '.play-btn', function (e) {
         e.preventDefault();
         console.log('▶️ Play button clicked!');
-        
+
         var $btn = $(this);
         var magnetLink = $btn.data('magnet');
         var torrentUrl = $btn.data('torrent-url');
-        
-        // Show loading state
-        var originalHtml = $btn.html();
-        $btn.html('<i class="fa fa-spinner fa-spin"></i>');
-        $btn.prop('disabled', true);
-        
-        // Function to play magnet link
-        function playMagnet(magnet) {
-            console.log('🎬 Playing magnet link:', magnet);
-            
-            // Call VLC helper service
-            fetch(`http://127.0.0.1:48888/play?magnet=${encodeURIComponent(magnet)}`)
-                .then(response => {
-                    if (response.ok) {
-                        doNotify("Starting playback in VLC...", "success", "glyphicon glyphicon-play");
-                    } else {
-                        throw new Error('VLC helper service error');
-                    }
-                })
-                .catch(error => {
-                    console.error('VLC helper error:', error);
-                    showVlcHelperInstructions();
-                })
-                .finally(() => {
+
+        // Function to copy magnet link and show instructions
+        function copyMagnetAndShowInstructions(magnet) {
+            console.log('📋 Copying magnet link to clipboard:', magnet);
+
+            // Copy to clipboard
+            copyToClipboard(magnet);
+
+            // Show success notification
+            doNotify("Magnet link copied to clipboard! Make sure VLC Helper is running.", "success", "glyphicon glyphicon-ok");
+
+            // Show instructions modal
+            showVlcHelperInstructions();
+        }
+
+        // If we have a magnet link, copy it directly
+        if (magnetLink) {
+            copyMagnetAndShowInstructions(magnetLink);
+            return;
+        }
+
+        // If we have a torrent URL, convert it to magnet first
+        if (torrentUrl) {
+            console.log('🔄 Converting torrent to magnet first...');
+
+            // Show loading state
+            var originalHtml = $btn.html();
+            $btn.html('<i class="fa fa-spinner fa-spin"></i>');
+            $btn.prop('disabled', true);
+
+            // Use existing conversion logic
+            if (typeof convertTorrentToMagnet === 'function') {
+                // Show conversion message
+                doNotify("Converting torrent to magnet link...", "info", "glyphicon glyphicon-refresh");
+
+                // Create a temporary element for conversion
+                var tempElement = $('<a>').attr('data-torrent-url', torrentUrl)[0];
+
+                // Convert torrent to magnet
+                convertTorrentToMagnet(tempElement);
+
+                // Wait a bit for conversion, then copy the magnet link
+                setTimeout(() => {
+                    var convertedMagnet = $(tempElement).data('magnet-link');
+
                     // Restore button state
                     $btn.html(originalHtml);
                     $btn.prop('disabled', false);
-                });
-        }
-        
-        // If we have a magnet link, play it directly
-        if (magnetLink) {
-            playMagnet(magnetLink);
-            return;
-        }
-        
-        // If we have a torrent URL, convert it to magnet first
-        if (torrentUrl) {
-            console.log('🔄 Converting torrent to magnet for playback...');
-            
-            // Use existing conversion logic
-            if (typeof convertTorrentToMagnet === 'function') {
-                // Create a temporary element for conversion
-                var tempElement = $('<a>').attr('data-torrent-url', torrentUrl)[0];
-                
-                // Convert torrent to magnet
-                convertTorrentToMagnet(tempElement);
-                
-                // Wait a bit for conversion, then try to get the magnet link
-                setTimeout(() => {
-                    var convertedMagnet = $(tempElement).data('magnet-link');
+
                     if (convertedMagnet && convertedMagnet.startsWith('magnet:')) {
-                        playMagnet(convertedMagnet);
+                        copyMagnetAndShowInstructions(convertedMagnet);
                     } else {
-                        // Fallback: try to extract magnet from the torrent URL
-                        console.log('🔄 Conversion failed, trying direct approach...');
-                        playMagnet(torrentUrl); // VLC helper might handle torrent URLs
+                        console.error('Conversion failed');
+                        doNotify("Failed to convert torrent to magnet link", "danger", "glyphicon glyphicon-alert");
                     }
                 }, 2000);
             } else {
                 console.error('convertTorrentToMagnet function not available');
-                playMagnet(torrentUrl); // Try direct approach
+                doNotify("Conversion function not available", "danger", "glyphicon glyphicon-alert");
+                $btn.html(originalHtml);
+                $btn.prop('disabled', false);
             }
+        } else {
+            console.error('No magnet link or torrent URL available');
+            doNotify("No playable link available", "danger", "glyphicon glyphicon-alert");
         }
     });
 }
@@ -2145,56 +2147,54 @@ function showVlcHelperInstructions() {
                 <div class="modal-content">
                     <div class="modal-header">
                         <button type="button" class="close" data-dismiss="modal">&times;</button>
-                        <h4 class="modal-title">VLC Helper Setup Required</h4>
+                        <h4 class="modal-title">📋 VLC Helper - Clipboard Mode</h4>
                     </div>
                     <div class="modal-body">
-                        <p>To use the Play button, you need to set up the VLC Helper service:</p>
+                        <div class="alert alert-success">
+                            <strong>✅ Magnet link copied to clipboard!</strong>
+                        </div>
+
+                        <p>To play this torrent in VLC, follow these steps:</p>
+
+                        <h5><strong>First Time Setup:</strong></h5>
                         <ol>
                             <li><strong>Install Node.js</strong> from <a href="https://nodejs.org" target="_blank">nodejs.org</a></li>
                             <li><strong>Install peerflix</strong>: <code>npm install -g peerflix</code></li>
-                            <li><strong>Download and run</strong> the VLC helper script</li>
+                            <li><strong>Install VLC</strong> from <a href="https://www.videolan.org/vlc/" target="_blank">videolan.org</a></li>
                         </ol>
+
+                        <h5><strong>How to Use:</strong></h5>
+                        <ol>
+                            <li><strong>Run VLC Helper:</strong> <code>node vlc-helper.js</code></li>
+                            <li><strong>Keep it running</strong> in the background</li>
+                            <li><strong>Click Play button</strong> in Jackett (magnet link is auto-copied)</li>
+                            <li><strong>VLC Helper detects</strong> the magnet link from clipboard and plays it automatically!</li>
+                        </ol>
+
                         <div class="alert alert-info">
-                            <strong>Quick Start:</strong><br>
-                            1. Download <code>vlc-helper.js</code> from the Jackett repository<br>
-                            2. Run: <code>node vlc-helper.js</code><br>
-                            3. Keep the terminal window open while using Jackett
+                            <strong>💡 How it works:</strong><br>
+                            VLC Helper continuously monitors your clipboard for magnet/torrent links.
+                            When it detects a valid link, it automatically starts playback in VLC.
                         </div>
-                        <p><strong>Note:</strong> The helper must run on the same machine where you want to play videos.</p>
+
+                        <p><strong>Note:</strong> VLC Helper must run on the same machine where you want to play videos.</p>
                     </div>
                     <div class="modal-footer">
                         <button type="button" class="btn btn-default" data-dismiss="modal">Close</button>
-                        <button type="button" class="btn btn-primary" onclick="testVlcHelper()">Test Connection</button>
                     </div>
                 </div>
             </div>
         </div>
     `;
-    
+
     // Remove existing modal if any
     $('#vlc-helper-modal').remove();
-    
+
     // Add modal to body
     $('body').append(instructionsHtml);
-    
+
     // Show modal
     $('#vlc-helper-modal').modal('show');
-}
-
-// Test VLC helper connection
-function testVlcHelper() {
-    fetch('http://127.0.0.1:48888/ping')
-        .then(response => {
-            if (response.ok) {
-                doNotify("VLC Helper is running!", "success", "glyphicon glyphicon-ok");
-                $('#vlc-helper-modal').modal('hide');
-            } else {
-                throw new Error('VLC helper not responding');
-            }
-        })
-        .catch(error => {
-            doNotify("VLC Helper is not running. Please start it first.", "danger", "glyphicon glyphicon-alert");
-        });
 }
 
 // Make functions globally available
@@ -2202,4 +2202,3 @@ window.convertTorrentToMagnet = convertTorrentToMagnet;
 window.parseTorrentToMagnet = parseTorrentToMagnet;
 window.BencodeParser = BencodeParser;
 window.showVlcHelperInstructions = showVlcHelperInstructions;
-window.testVlcHelper = testVlcHelper;
