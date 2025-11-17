@@ -1829,47 +1829,32 @@ function bindUIButtons() {
             return;
         }
 
-        // If we have a torrent URL, convert it to magnet first
+        // If we have a torrent URL, try to get the magnet link
         if (torrentUrl) {
-            console.log('🔄 Converting torrent to magnet first...');
+            console.log('🔄 Attempting to get magnet link from torrent URL...');
 
             // Show loading state
             var originalHtml = $btn.html();
             $btn.html('<i class="fa fa-spinner fa-spin"></i>');
             $btn.prop('disabled', true);
 
-            // Use existing conversion logic
-            if (typeof convertTorrentToMagnet === 'function') {
-                // Show conversion message
-                doNotify("Converting torrent to magnet link...", "info", "glyphicon glyphicon-refresh");
+            // Show conversion message
+            doNotify("Getting magnet link...", "info", "glyphicon glyphicon-refresh");
 
-                // Create a temporary element for conversion
-                var tempElement = $('<a>').attr('data-torrent-url', torrentUrl)[0];
-
-                // Convert torrent to magnet
-                convertTorrentToMagnet(tempElement);
-
-                // Wait a bit for conversion, then copy the magnet link
-                setTimeout(() => {
-                    var convertedMagnet = $(tempElement).data('magnet-link');
-
-                    // Restore button state
-                    $btn.html(originalHtml);
-                    $btn.prop('disabled', false);
-
-                    if (convertedMagnet && convertedMagnet.startsWith('magnet:')) {
-                        copyMagnetAndShowInstructions(convertedMagnet);
-                    } else {
-                        console.error('Conversion failed');
-                        doNotify("Failed to convert torrent to magnet link", "danger", "glyphicon glyphicon-alert");
-                    }
-                }, 2000);
-            } else {
-                console.error('convertTorrentToMagnet function not available');
-                doNotify("Conversion function not available", "danger", "glyphicon glyphicon-alert");
+            // Try to extract magnet link using iframe redirect method
+            extractMagnetFromJackettUrl(torrentUrl, function(magnetLink) {
+                // Restore button state
                 $btn.html(originalHtml);
                 $btn.prop('disabled', false);
-            }
+
+                if (magnetLink && magnetLink.startsWith('magnet:')) {
+                    console.log('✅ Successfully extracted magnet link');
+                    copyMagnetAndShowInstructions(magnetLink);
+                } else {
+                    console.error('❌ Failed to extract magnet link');
+                    doNotify("Failed to get magnet link. Try downloading the torrent file instead.", "danger", "glyphicon glyphicon-alert");
+                }
+            });
         } else {
             console.error('No magnet link or torrent URL available');
             doNotify("No playable link available", "danger", "glyphicon glyphicon-alert");
@@ -1885,12 +1870,116 @@ function proxyWarning(input) {
     }
 }
 
+// Extract magnet link from Jackett URL using iframe redirect method
+function extractMagnetFromJackettUrl(torrentUrl, callback) {
+    console.log('🔍 Extracting magnet link from:', torrentUrl);
+
+    // Create a hidden iframe to trigger the redirect
+    var iframe = document.createElement('iframe');
+    iframe.style.display = 'none';
+    iframe.id = 'magnet-extractor-' + Date.now();
+
+    var timeoutId;
+    var checkCount = 0;
+    var maxChecks = 20; // Check for 2 seconds (20 * 100ms)
+
+    // Function to check iframe location
+    var checkInterval = setInterval(function() {
+        checkCount++;
+
+        try {
+            // Try to access iframe location (will fail due to CORS, but that's ok)
+            var iframeLocation = iframe.contentWindow.location.href;
+
+            // If we can read it and it's a magnet link, we got it!
+            if (iframeLocation && iframeLocation.startsWith('magnet:')) {
+                console.log('✅ Found magnet link via iframe:', iframeLocation);
+                clearInterval(checkInterval);
+                clearTimeout(timeoutId);
+                document.body.removeChild(iframe);
+                callback(iframeLocation);
+                return;
+            }
+        } catch (e) {
+            // CORS error is expected - check if iframe src changed to magnet
+            try {
+                if (iframe.src && iframe.src.startsWith('magnet:')) {
+                    console.log('✅ Found magnet link via iframe.src:', iframe.src);
+                    clearInterval(checkInterval);
+                    clearTimeout(timeoutId);
+                    document.body.removeChild(iframe);
+                    callback(iframe.src);
+                    return;
+                }
+            } catch (e2) {
+                // Continue checking
+            }
+        }
+
+        // Give up after max checks
+        if (checkCount >= maxChecks) {
+            console.log('⏱️ Timeout waiting for magnet link');
+            clearInterval(checkInterval);
+            clearTimeout(timeoutId);
+            document.body.removeChild(iframe);
+
+            // Fallback: try to download and parse the torrent file
+            console.log('🔄 Falling back to torrent file download...');
+            downloadAndParseTorrent(torrentUrl, callback);
+        }
+    }, 100);
+
+    // Set a hard timeout
+    timeoutId = setTimeout(function() {
+        clearInterval(checkInterval);
+        if (iframe.parentNode) {
+            document.body.removeChild(iframe);
+        }
+        console.log('⏱️ Hard timeout - falling back to torrent download');
+        downloadAndParseTorrent(torrentUrl, callback);
+    }, 3000);
+
+    // Add iframe to document and load the URL
+    document.body.appendChild(iframe);
+    iframe.src = torrentUrl;
+}
+
+// Download and parse torrent file to extract magnet link
+function downloadAndParseTorrent(torrentUrl, callback) {
+    console.log('📥 Downloading torrent file from:', torrentUrl);
+
+    fetch(torrentUrl, {
+        method: 'GET',
+        mode: 'cors',
+        credentials: 'include'
+    })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Failed to fetch torrent file: ' + response.status);
+            }
+            return response.arrayBuffer();
+        })
+        .then(arrayBuffer => {
+            console.log('📥 Torrent file downloaded, size:', arrayBuffer.byteLength);
+
+            // Parse torrent and generate magnet link
+            var magnetLink = parseTorrentToMagnet(arrayBuffer);
+            console.log('🔗 Generated magnet link:', magnetLink);
+
+            callback(magnetLink);
+        })
+        .catch(error => {
+            console.error('❌ Error downloading/parsing torrent:', error);
+            callback(null);
+        });
+}
+
 // Convert torrent to magnet function
 function convertTorrentToMagnet(element) {
     console.log('🔄 Starting torrent to magnet conversion...');
     console.log('📥 Element:', element);
     console.log('📥 Torrent URL:', $(element).data('torrent-url'));
-    
+
     var torrentUrl = $(element).data('torrent-url');
     if (!torrentUrl) {
         console.error('No torrent URL found!');
@@ -2202,3 +2291,5 @@ window.convertTorrentToMagnet = convertTorrentToMagnet;
 window.parseTorrentToMagnet = parseTorrentToMagnet;
 window.BencodeParser = BencodeParser;
 window.showVlcHelperInstructions = showVlcHelperInstructions;
+window.extractMagnetFromJackettUrl = extractMagnetFromJackettUrl;
+window.downloadAndParseTorrent = downloadAndParseTorrent;
